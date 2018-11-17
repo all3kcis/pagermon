@@ -6,6 +6,7 @@ var bcrypt = require('bcryptjs');
 var passport = require('passport');
 var push = require('pushover-notifications');
 var util = require('util')
+var exec = require('child_process').exec;
 const nodemailer = require('nodemailer');
 require('../config/passport')(passport); // pass passport for configuration
 
@@ -443,7 +444,9 @@ router.get('/capcodes/:id', isSecMode, function(req, res, next) {
             "telegram": "",
             "telechat": "",
             "mailenable" : "",
-            "mailto" : ""
+            "mailto" : "",
+            "shellenable" : "",
+            "shellcmd" : ""
           };
           res.status(200);
           res.json(row);
@@ -496,7 +499,9 @@ router.get('/capcodeCheck/:id', isSecMode, function(req, res, next) {
             "telegram": "",
             "telechat": "",
             "mailenable" : "",
-            "mailto" : ""
+            "mailto" : "",
+            "shellenable" : "",
+            "shellcmd" : ""
           };
           res.status(200);
           res.json(row);
@@ -548,6 +553,7 @@ router.post('/messages', function(req, res, next) {
     var pdwMode = nconf.get('messages:pdwMode');
     var pushenable = nconf.get('pushover:pushenable');
     var pushkey = nconf.get('pushover:pushAPIKEY');
+    var shellCmdEnable = nconf.get('shellCmd:shellCmdEnable');
     var mailEnable = nconf.get('STMP:MailEnable');
     var MailFrom      = nconf.get('STMP:MailFrom');
     var MailFromName  = nconf.get('STMP:MailFromName');
@@ -592,7 +598,7 @@ router.post('/messages', function(req, res, next) {
             if( !ignoreNotMatching || (ignoreNotMatching &&
                 address.match(new RegExp(ignoreNotMatching))) ){            
 
-              db.get("SELECT id, ignore, push, pushpri, pushgroup, pushsound, telegram, telechat, mailenable, mailto FROM capcodes WHERE ? LIKE address ORDER BY REPLACE(address, '_', '%') DESC LIMIT 1", address, function(err,row) {
+              db.get("SELECT id, ignore, push, pushpri, pushgroup, pushsound, telegram, telechat, mailenable, mailto, shellenable, shellcmd FROM capcodes WHERE ? LIKE address ORDER BY REPLACE(address, '_', '%') DESC LIMIT 1", address, function(err,row) {
                 var insert;
                 var alias_id = null;
                 var pushonoff = null;
@@ -603,6 +609,8 @@ router.post('/messages', function(req, res, next) {
                 var telechat = null;
                 var mailonoff = null;
                 var mailTo = "";
+                var shellonoff = null;
+                var shellCmd = null;
                 if (err) { console.error(err) }
                 if (row) {
                   if (row.ignore == '1') {
@@ -619,6 +627,8 @@ router.post('/messages', function(req, res, next) {
                     telechat = row.telechat
                     mailonoff = row.mailenable;
                     mailTo = row.mailto;
+                    shellonoff = row.shellenable;
+                    shellCmd = row.shellcmd;
                   }
                 } else {
                   insert = true;
@@ -674,6 +684,27 @@ router.post('/messages', function(req, res, next) {
                             }
                           }
                           res.status(200).send(''+reqLastID);
+
+                          //Check to see if Shell Command is enabled globaly
+                          if(shellCmdEnable == true){
+                            // Check to see if the capcode is set to mailto
+                            if (shellonoff == 1) {
+                              // Exec shellCmd
+                              console.log('Exec shell command for selected alias')
+                              dir = exec(shellCmd, function(err, stdout, stderr) {
+                                if (err) {
+                                  console.log('Shell Cmd: Error code :' + err);
+                                  console.log('Shell Cmd: ' + stderr);
+                                }
+                                console.log('Shell Cmd: ' + stdout);
+                              });
+                              dir.on('exit', function (code) {
+                                console.log('Shell Cmd: exit code : ' + code);
+                              });
+                              console.log('Shell Cmd: started.');
+                            }
+                          }
+
                           //Check to see if Email is enabled globaly
                           if (mailEnable == true) {
                             // Check to see if the capcode is set to mailto
@@ -808,8 +839,10 @@ router.post('/capcodes', function(req, res, next) {
     var telechat = req.body.telechat || '';
     var Mailenable = req.body.mailenable || 0;
     var MailTo = req.body.mailto || '';
+    var shellenable = req.body.shellenable || 0;
+    var shellcmd = req.body.shellcmd || '';
     db.serialize(() => {
-      db.run("REPLACE INTO capcodes (id, address, alias, agency, color, icon, ignore, push, pushpri, pushgroup, pushsound, telegram, telechat, mailenable, mailto) VALUES ($mesID, $mesAddress, $mesAlias, $mesAgency, $mesColor, $mesIcon, $mesIgnore, $mesPush, $mesPushPri, $mesPushGroup, $mesPushSound, $mesTelegram, $mesTeleChat, $MailEnable, $MailTo );", {
+      db.run("REPLACE INTO capcodes (id, address, alias, agency, color, icon, ignore, push, pushpri, pushgroup, pushsound, telegram, telechat, mailenable, mailto, shellenable, shellcmd) VALUES ($mesID, $mesAddress, $mesAlias, $mesAgency, $mesColor, $mesIcon, $mesIgnore, $mesPush, $mesPushPri, $mesPushGroup, $mesPushSound, $mesTelegram, $mesTeleChat, $MailEnable, $MailTo, $shellEnable, $shellCmd );", {
         $mesID: id,
         $mesAddress: address,
         $mesAlias: alias,
@@ -824,7 +857,9 @@ router.post('/capcodes', function(req, res, next) {
         $mesTelegram: telegram,
         $mesTeleChat: telechat,
         $MailEnable : Mailenable,
-        $MailTo : MailTo
+        $MailTo : MailTo,
+        $shellEnable : shellenable,
+        $shellCmd : shellcmd
       }, function(err){
         if (err) {
           res.status(500).send(err);
@@ -887,11 +922,13 @@ router.post('/capcodes/:id', function(req, res, next) {
       var telechat = req.body.telechat || '';
       var Mailenable = req.body.mailenable || 0;
       var MailTo = req.body.mailto || '';
+      var shellenable = req.body.shellenable || 0;
+      var shellcmd = req.body.shellcmd || '';
       var updateAlias = req.body.updateAlias || 0;
       console.time('insert');
       db.serialize(() => {
         //db.run("UPDATE tbl SET name = ? WHERE id = ?", [ "bar", 2 ]);
-        db.run("REPLACE INTO capcodes (id, address, alias, agency, color, icon, ignore, push, pushpri, pushgroup, pushsound, telegram, telechat, mailenable, mailto  ) VALUES ($mesID, $mesAddress, $mesAlias, $mesAgency, $mesColor, $mesIcon, $mesIgnore, $mesPush, $mesPushPri, $mesPushGroup, $mesPushSound, $mesTelegram, $mesTeleChat, $MailEnable, $MailTo );", {
+        db.run("REPLACE INTO capcodes (id, address, alias, agency, color, icon, ignore, push, pushpri, pushgroup, pushsound, telegram, telechat, mailenable, mailto, shellenable, shellcmd ) VALUES ($mesID, $mesAddress, $mesAlias, $mesAgency, $mesColor, $mesIcon, $mesIgnore, $mesPush, $mesPushPri, $mesPushGroup, $mesPushSound, $mesTelegram, $mesTeleChat, $MailEnable, $MailTo, $shellEnable, $shellCmd );", {
           $mesID: id,
           $mesAddress: address,
           $mesAlias: alias,
@@ -906,7 +943,9 @@ router.post('/capcodes/:id', function(req, res, next) {
           $mesTelegram: telegram,
           $mesTeleChat: telechat,
           $MailEnable : Mailenable,
-          $MailTo : MailTo
+          $MailTo : MailTo,
+          $shellEnable : shellenable,
+          $shellCmd : shellcmd
         }, function(err){
           if (err) {
             console.timeEnd('insert');
