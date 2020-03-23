@@ -552,7 +552,13 @@ router.post('/messages', isLoggedIn, function(req, res, next) {
     var data = req.body;
         data.pluginData = {};
 
-    if (filterDupes) {
+    if ( data.message == "TONE ONLY" ){
+      data.isToneOnly = true;
+    }else{
+      data.isToneOnly = false;
+    }
+
+    if (filterDupes && !data.isToneOnly) {
       // this is a bad solution and tech debt that will bite us in the ass if we ever go HA, but that's a problem for future me and that guy's a dick
       var datetime = data.datetime || 1;
       var timeDiff = datetime - dupeTime;
@@ -655,7 +661,7 @@ router.post('/messages', isLoggedIn, function(req, res, next) {
               res.send('Ignoring duplicate');
             } else {
               db.from('capcodes')
-                  .select('id', 'ignore')
+                  .select('id', 'ignore', 'alias', 'agency', 'icon', 'color', 'pluginconf')
                   .whereRaw(`"${address}" LIKE address`)
                   .orderByRaw("REPLACE(address, '_', '%') DESC")
                   .then((row) => {
@@ -677,6 +683,21 @@ router.post('/messages', isLoggedIn, function(req, res, next) {
                     // overwrite alias_id if set from plugin
                     if (data.pluginData.aliasId) {
                       alias_id = data.pluginData.aliasId;
+                    }
+
+                    if(data.isToneOnly){
+                      insert=false; // Do not store ToneOnly
+                      if (row.pluginconf) {
+                        data.pluginconf = parseJSON(row.pluginconf);
+                      } else {
+                        data.pluginconf = {};
+                      }
+                      // send data to pluginHandler
+                      logger.main.debug('toneonlyMessage start');
+                      pluginHandler.handle('message', 'toneonly', data, function(response) {
+                        logger.main.debug(util.format('%o',response));
+                        logger.main.debug('toneonlyMessage done');
+                      })
                     }
 
                     if (insert == true) {
@@ -782,6 +803,7 @@ router.post('/messages', isLoggedIn, function(req, res, next) {
              logger.main.error(err)
             })
       })
+ //   } // Else Tone Only
   } else {
     res.status(500).json({message: 'Error - address or message missing'});
   }

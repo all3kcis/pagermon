@@ -4,6 +4,7 @@
     "disable": false,
     "trigger": "message",
     "scope": "after",
+    "acceptToneOnly": true,
     "config": [ 
         {
             "name": "mailFrom",

@@ -27,7 +27,7 @@ function handle(trigger, scope, data, callback) {
             if (fs.existsSync(`./plugins/${plugin}.json`) && fs.existsSync(`./plugins/${plugin}.js`)) {
                 let pConfig = require(`./${plugin}.json`);
                 // check scope
-                if (pConfig.trigger == trigger && pConfig.scope == scope && !pConfig.disable) {
+                if (pConfig.trigger == trigger && (pConfig.scope == scope || ( scope == "toneonly" && typeof pConfig.acceptToneOnly != 'undefined' && pConfig.acceptToneOnly )) && !pConfig.disable) {
                     logger.main.debug('RUNNING PLUGIN!');
                     let pRun = require(`./${plugin}`);
                         pRun.run(trigger, scope, data, conf, function(response, error) {
