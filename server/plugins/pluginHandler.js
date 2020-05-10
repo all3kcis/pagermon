@@ -31,10 +31,14 @@ function handle(trigger, scope, data, callback) {
                     if ( !data.isToneOnly || ( data.isToneOnly && typeof pConfig.acceptToneOnly != 'undefined' && pConfig.acceptToneOnly ) ) {
                         logger.main.debug('RUNNING PLUGIN!');
                         let pRun = require(`./${plugin}`);
-                        pAliasConf = data.pluginconf[plugin];
+                        if ( typeof data.pluginconf != "undefined" && typeof data.pluginconf[plugin] != "undefined"){
+                            pAliasConf = data.pluginconf[plugin];
+                        }else{
+                            pAliasConf = [];
+                        }
 
 
-                        if( nconf.get('messages:processToneOnly') == 'aliases' && ( typeof pAliasConf.processToneOnly == "undefined" || !pAliasConf.processToneOnly ) ){
+                        if( data.isToneOnly && nconf.get('messages:processToneOnly') == 'aliases' && ( typeof pAliasConf.processToneOnly == "undefined" || !pAliasConf.processToneOnly ) ){
                             logger.main.debug("processToneOnly=aliases and toneOnlyProcessAlias=false -> Skipped")
                             cb();
                         }else{
